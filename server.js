@@ -188,7 +188,13 @@ MongoClient.connect(
 			.forEach(entry => {
 				transactions.push(entry);
 			})
-			.then(() => res.status(201).json({ transactions }));
+			.then(() => {
+				const sortedArray = transactions.sort((a, b) => {
+					return moment(a.timestamp).diff(b.timestamp);
+				});
+				sortedArray.forEach(obj => (obj.timestamp = moment(obj.timestamp).fromNow()));
+				res.status(201).json({ transactions });
+			});
 	});
 
 	app.post('/getTransactionsById', async (req, res, next) => {
@@ -210,6 +216,7 @@ MongoClient.connect(
 				const sortedArray = transactions.sort((a, b) => {
 					return moment(a.timestamp).diff(b.timestamp);
 				});
+				sortedArray.forEach(obj => (obj.timestamp = moment(obj.timestamp).fromNow()));
 				res.status(201).json({ sortedArray });
 			});
 	});
