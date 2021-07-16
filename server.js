@@ -3,6 +3,7 @@ const app = express();
 const cors = require('cors');
 const port = process.env.PORT || 5000;
 const moment = require('moment');
+const nodemailer = require('nodemailer');
 
 app.use(cors());
 app.use(express.json());
@@ -45,6 +46,27 @@ MongoClient.connect(
 				res.status(500).json({ message: 'An error occured.' });
 				return;
 			}
+
+			var transporter = nodemailer.createTransport({
+				service: 'gmail',
+				auth: {
+					user: 'asquaremrocks@gmail.com',
+					pass: 'rvsuljwlvazzaxnm',
+				},
+			});
+
+			const mailOptions = {
+				from: 'asquaremrocks@gmail.com', // sender address
+				to: email, // list of receivers
+				subject: 'New user added to MiniBank!', // Subject line
+				html: `<h1>Welcome to Mini Bank!</h1><h3>Here are your login credentials:</h3><p>Email: <b>${email}</b></p><p>Password: <b>${'1234'}</b></p><p>Note: This is just for testing purposes.</p>`, // plain text body
+			};
+			transporter.sendMail(mailOptions, function (err, info) {
+				if (err) {
+					res.status(500).json({ message: 'An error occured during sending mail.' });
+					return;
+				} else console.log(info);
+			});
 
 			res.status(201).json({ message: 'User created successfully!' });
 		});
