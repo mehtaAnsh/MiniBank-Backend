@@ -28,7 +28,7 @@ MongoClient.connect(
 		var { email, balance } = req.body;
 
 		await usersCollection.findOne({ email }).then(async resp => {
-			if (resp !== null) {
+			if (resp !== undefined) {
 				res.status(400).json({ message: 'User already exists!' });
 				return;
 			}
