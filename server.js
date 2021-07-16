@@ -243,6 +243,21 @@ MongoClient.connect(
 			});
 	});
 
+	app.post('/getBal', async (req, res, next) => {
+		if (!req.body.id) {
+			res.status(401).json({ message: 'Parameters missing' });
+			return;
+		}
+		const data = await usersCollection.findOne({ id: req.body.id });
+
+		if (!data) {
+			res.status(404).json({ message: 'No users found' });
+			return;
+		}
+
+		res.status(201).json({ balance: data.balance });
+	});
+
 	app.listen(port, () => {
 		console.log(`Example app listening at http://localhost:${port}`);
 	});
