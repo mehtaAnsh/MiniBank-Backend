@@ -258,6 +258,10 @@ MongoClient.connect(
 		res.status(201).json({ balance: data.balance });
 	});
 
+	app.get('/', async (req, res, next) => {
+		res.status(200).json({ message: process.env.TEST_CRED });
+	});
+
 	app.listen(port, () => {
 		console.log(`Example app listening at http://localhost:${port}`);
 	});
