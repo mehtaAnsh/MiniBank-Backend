@@ -1,3 +1,6 @@
+const dotenv = require('dotenv');
+dotenv.config();
+
 module.exports = {
 	accessKeyId: process.env.ACCESS_KEY_ID,
 	secretAccessKey: process.env.ACCESS_KEY_SECRET,
