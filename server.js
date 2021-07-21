@@ -119,13 +119,13 @@ app.post('/verify', async (req, res, next) => {
 });
 
 app.post('/transfer', async (req, res, next) => {
-	if (!req.body.sender_email || !req.body.receiver_email || !req.body.amt) {
+	if (!req.body.sender_email || !req.body.receiver || !req.body.amt) {
 		res.status(400).json({ message: 'Parameters missing' });
 		return;
 	}
 
-	var { sender_email, receiver_email, amt } = req.body;
-	var sender_bal, receiver_bal, sender_id, receiver_id;
+	var { sender_email, receiver, amt } = req.body;
+	var sender_bal, receiver_bal, sender_id, receiver_id, receiver_email;
 
 	amt = Number(amt);
 
@@ -147,66 +147,75 @@ app.post('/transfer', async (req, res, next) => {
 			return;
 		}
 
-		await docClient.get({ ...usersTable, Key: { email: receiver_email } }, async (err, data) => {
-			if (err) {
-				res.status(500).json({ message: 'An error occured.' });
-				return;
-			}
-			if (Object.keys(data).length === 0) {
-				res.status(404).json({ message: 'Receiver not found.' });
-				return;
-			}
-			receiver_bal = data.Item.balance;
-			receiver_id = data.Item.id;
+		await docClient.scan(
+			{
+				...usersTable,
+				FilterExpression: 'id=:r',
+				ExpressionAttributeValues: { ':r': receiver },
+			},
+			async (err, data) => {
+				if (err) {
+					res.status(500).json({ message: 'An error occured.' });
+					return;
+				}
+				if (Object.keys(data.Items).length === 0) {
+					res.status(404).json({ message: 'Receiver not found.' });
+					return;
+				}
 
-			sender_bal -= amt;
-			receiver_bal += amt;
+				receiver_bal = data.Items[0].balance;
+				receiver_id = data.Items[0].id;
+				receiver_email = data.Items[0].email;
 
-			await docClient.update(
-				{
-					...usersTable,
-					Key: { email: sender_email },
-					UpdateExpression: 'set balance = :r',
-					ExpressionAttributeValues: { ':r': Number(sender_bal) },
-				},
-				async err => {
-					if (err) {
-						res.status(500).json({ message: 'An error occured.' });
-						return;
-					}
-					await docClient.update(
-						{
-							...usersTable,
-							Key: { email: receiver_email },
-							UpdateExpression: 'set balance=:r',
-							ExpressionAttributeValues: { ':r': receiver_bal },
-						},
-						async err => {
-							if (err) {
-								console.log(err);
-								res.status(500).json({ message: 'An error occured.' });
-								return;
-							}
-							const newTransaction = {
-								transaction_id: uuidv4(),
-								sender_id,
-								receiver_id,
-								amt,
-								timestamp: moment().format(),
-							};
-							await docClient.put({ ...transactionsTable, Item: newTransaction }, err => {
+				sender_bal -= amt;
+				receiver_bal += amt;
+
+				await docClient.update(
+					{
+						...usersTable,
+						Key: { email: sender_email },
+						UpdateExpression: 'set balance = :r',
+						ExpressionAttributeValues: { ':r': Number(sender_bal) },
+					},
+					async err => {
+						if (err) {
+							res.status(500).json({ message: 'An error occured.' });
+							return;
+						}
+						await docClient.update(
+							{
+								...usersTable,
+								Key: { email: receiver_email },
+								UpdateExpression: 'set balance=:r',
+								ExpressionAttributeValues: { ':r': receiver_bal },
+							},
+							async err => {
 								if (err) {
 									console.log(err);
 									res.status(500).json({ message: 'An error occured.' });
 									return;
 								}
-								res.status(201).json({ message: 'Transferred!' });
-							});
-						}
-					);
-				}
-			);
-		});
+								const newTransaction = {
+									transaction_id: uuidv4(),
+									sender_id,
+									receiver_id,
+									amt,
+									timestamp: moment().format(),
+								};
+								await docClient.put({ ...transactionsTable, Item: newTransaction }, err => {
+									if (err) {
+										console.log(err);
+										res.status(500).json({ message: 'An error occured.' });
+										return;
+									}
+									res.status(201).json({ message: 'Transferred!' });
+								});
+							}
+						);
+					}
+				);
+			}
+		);
 	});
 
 	/*
@@ -235,30 +244,37 @@ app.post('/transfer', async (req, res, next) => {
 
 app.post('/transact', async (req, res, next) => {
 	//type, amt (debit=0, credit=1)
-	if (!req.body.email || !req.body.type || !req.body.amt) {
+	if (!req.body.id || !req.body.type || !req.body.amt) {
 		res.status(400).json({ message: 'Parameters missing' });
 		return;
 	}
 
-	var { email, type, amt } = req.body;
+	var { id, type, amt } = req.body;
 	amt = Number(amt);
-	var acc_balance, id;
+	var acc_balance, email;
 
-	await docClient.get({ ...usersTable, Key: { email } }, async (err, data) => {
-		if (err) {
-			res.status(500).json({ message: 'An error occured.' });
-			return;
+	await docClient.scan(
+		{
+			...usersTable,
+			FilterExpression: 'id=:r',
+			ExpressionAttributeValues: { ':r': id },
+		},
+		async (err, data) => {
+			if (err) {
+				res.status(500).json({ message: 'An error occured.' });
+				return;
+			}
+			if (Object.keys(data.Items).length === 0) {
+				res.status(404).json({ message: 'User not found.' });
+				return;
+			}
+
+			acc_balance = data.Items[0].balance;
+			email = data.Items[0].email;
+
+			Number(type) === 1 ? credit(acc_balance + amt) : debit(acc_balance - amt);
 		}
-		if (Object.keys(data).length === 0) {
-			res.status(404).json({ message: 'User not found.' });
-			return;
-		}
-
-		acc_balance = data.Item.balance;
-		id = data.Item.id;
-
-		Number(type) === 1 ? credit(acc_balance + amt) : debit(acc_balance - amt);
-	});
+	);
 
 	async function debit(amount) {
 		if (acc_balance < amt || acc_balance === 0) {
@@ -281,7 +297,7 @@ app.post('/transact', async (req, res, next) => {
 					transaction_id: uuidv4(),
 					sender_id: id,
 					receiver_id: 100,
-					amt: amount,
+					amt,
 					timestamp: moment().format(),
 				};
 				await docClient.put({ ...transactionsTable, Item: newTransaction }, err => {
@@ -313,7 +329,7 @@ app.post('/transact', async (req, res, next) => {
 					transaction_id: uuidv4(),
 					sender_id: 100,
 					receiver_id: id,
-					amt: amount,
+					amt,
 					timestamp: moment().format(),
 				};
 				await docClient.put({ ...transactionsTable, Item: newTransaction }, err => {
@@ -378,7 +394,7 @@ app.post('/getTransactionsById', async (req, res, next) => {
 				return;
 			}
 			if (Object.keys(data).length === 0) {
-				res.status(201).json({ transactions: [] });
+				res.status(200).json({ transactions: [] });
 				return;
 			}
 
