@@ -51,7 +51,6 @@ app.post('/create_user', async (req, res, next) => {
 			const newUser = {
 				id: Math.random().toFixed(16).split('.')[1],
 				email,
-				password: '1234',
 				balance: Number(balance),
 			};
 
@@ -72,7 +71,7 @@ app.post('/create_user', async (req, res, next) => {
 					from: 'asquaremrocks@gmail.com', // sender address
 					to: email, // list of receivers
 					subject: 'New user added to MiniBank!', // Subject line
-					html: `<h1>Welcome to Mini Bank!</h1><h3>Here are your login credentials:</h3><p>Email: <b>${email}</b></p><p>Password: <b>${'1234'}</b></p><p>Note: This is just for testing purposes.</p>`, // plain text body
+					html: `<h1>Welcome to Mini Bank!</h1><h3>Here are your login credentials:</h3><p>Email: <b>${email}</b></p><p>Password: <b>${'abc@1234'}</b></p><p>Note: This is just for testing purposes.</p>`, // plain text body
 				};
 				transporter.sendMail(mailOptions, function (err, info) {
 					if (err) {
@@ -86,13 +85,13 @@ app.post('/create_user', async (req, res, next) => {
 	);
 });
 
-app.post('/verify', async (req, res, next) => {
-	if (!req.body.email || !req.body.password) {
+app.post('/getUserDetails', async (req, res, next) => {
+	if (!req.body.email) {
 		res.status(400).json({ message: 'Parameters missing' });
 		return;
 	}
 
-	var { email, password } = req.body;
+	var { email } = req.body;
 
 	await docClient.get(
 		{
@@ -109,10 +108,6 @@ app.post('/verify', async (req, res, next) => {
 				return;
 			}
 			const user = data.Item;
-			if (password !== user.password) {
-				res.status(401).json({ message: 'Incorrect password.' });
-				return;
-			}
 			res.status(200).json({ balance: user.balance, id: user.id, message: 'User verified successfully!' });
 		}
 	);
@@ -375,39 +370,51 @@ app.get('/getAllTransactions', async (req, res, next) => {
 });
 
 app.post('/getTransactionsById', async (req, res, next) => {
-	if (!req.body.id) {
+	if (!req.body.email) {
 		res.status(404).json({ message: 'Parameters missing' });
 		return;
 	}
 
-	var transactions = [];
+	var transactions = [],
+		id;
 
-	await docClient.scan(
-		{
-			...transactionsTable,
-			FilterExpression: 'sender_id=:r OR receiver_id=:r',
-			ExpressionAttributeValues: { ':r': req.body.id },
-		},
-		(err, data) => {
-			if (err) {
-				res.status(500).json({ message: 'An error occured.' });
-				return;
-			}
-			if (Object.keys(data).length === 0) {
-				res.status(200).json({ transactions: [] });
-				return;
-			}
-
-			data.Items.forEach(entry => transactions.push(entry));
-
-			const sortedArray = transactions.sort((a, b) => {
-				return moment(a.timestamp).diff(b.timestamp);
-			});
-			sortedArray.forEach(obj => (obj.timestamp = moment(obj.timestamp).fromNow()));
-
-			res.status(200).json({ sortedArray });
+	await docClient.get({ ...usersTable, Key: { email: req.body.email } }, async (err, data) => {
+		if (err) {
+			res.status(500).json({ message: 'An error occured.' });
+			return;
 		}
-	);
+		if (Object.keys(data).length === 0) {
+			res.status(404).json({ message: 'User not found!' });
+			return;
+		}
+		id = data.Item.id;
+		await docClient.scan(
+			{
+				...transactionsTable,
+				FilterExpression: 'sender_id=:r OR receiver_id=:r',
+				ExpressionAttributeValues: { ':r': id },
+			},
+			(err, data) => {
+				if (err) {
+					res.status(500).json({ message: 'An error occured.' });
+					return;
+				}
+				if (Object.keys(data).length === 0) {
+					res.status(200).json({ transactions: [] });
+					return;
+				}
+
+				data.Items.forEach(entry => transactions.push(entry));
+
+				const sortedArray = transactions.sort((a, b) => {
+					return moment(a.timestamp).diff(b.timestamp);
+				});
+				sortedArray.forEach(obj => (obj.timestamp = moment(obj.timestamp).fromNow()));
+
+				res.status(200).json({ sortedArray });
+			}
+		);
+	});
 });
 
 app.post('/getBal', async (req, res, next) => {
